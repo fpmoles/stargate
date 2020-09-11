@@ -3,7 +3,10 @@ package io.stargate.it;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
@@ -30,6 +33,7 @@ import com.datastax.oss.driver.api.core.cql.QueryTrace;
 import com.datastax.oss.driver.api.core.cql.ResultSet;
 import com.datastax.oss.driver.api.core.cql.Row;
 import com.datastax.oss.driver.api.core.cql.SimpleStatement;
+import com.datastax.oss.driver.api.core.cql.Statement;
 import com.datastax.oss.driver.api.core.data.TupleValue;
 import com.datastax.oss.driver.api.core.metadata.schema.KeyspaceMetadata;
 import com.datastax.oss.driver.api.core.metadata.schema.TableMetadata;
@@ -58,7 +62,7 @@ public class CQLTest extends BaseOsgiIntegrationTest
     {
         String testName = name.getMethodName();
         testName = testName.substring(0, testName.indexOf("["));
-        keyspace = "ks_" + testName;
+        keyspace = "ks_" + new Date().getTime() + "_" + testName;
         table = testName;
     }
 
@@ -356,6 +360,43 @@ public class CQLTest extends BaseOsgiIntegrationTest
         assertThat(tupleReturnValue.getString(0)).isEqualTo("hello");
         assertThat(tupleReturnValue.getInt(1)).isEqualTo(1);
         assertThat(tupleReturnValue.getInt(2)).isEqualTo(2);
+    }
+
+    @Test
+    public void pagingTest()
+    {
+        createKeyspace();
+        String tableName = String.format("\"%s\".\"%s\"", keyspace, table);
+        session.execute(String.format(
+            "CREATE TABLE %s (key1 int, key2 int, value text, PRIMARY KEY(key1, key2))", tableName));
+
+        // Insert a bunch of data
+        PreparedStatement insertPs = session.prepare(
+            String.format("INSERT INTO %s (key1, key2, value) VALUES (?, ?, ?)", tableName));
+        final int length = 15;
+        for (int i = 0; i < length; i++)
+        {
+            session.execute(insertPs.bind(0, i, 0 + "_" + i));
+        }
+
+        // Retrieve the data using small page sizes
+        final int pageSize = 10;
+        String selectQuery = String.format("SELECT * FROM %s WHERE key1 = ?", tableName);
+        PreparedStatement selectPs = session.prepare(selectQuery);
+        Arrays.stream(new Boolean[] {true, false}).forEach(prepare -> {
+            Statement<?> stmt = prepare ? selectPs.bind(0) : SimpleStatement.newInstance(selectQuery, 0);
+
+            // Retrieve first page
+            ResultSet rs = session.execute(stmt.setPageSize(pageSize));
+            assertThat(rs.getAvailableWithoutFetching()).isEqualTo(pageSize);
+            ByteBuffer pageState = rs.getExecutionInfo().getPagingState();
+            assertThat(pageState).isNotNull();
+
+            // Retrieve successive page
+            rs = session.execute(selectPs.bind(0).setPageSize(pageSize).setPagingState(pageState));
+            assertThat(rs.getAvailableWithoutFetching()).isEqualTo(length - pageSize);
+            assertThat(rs.getExecutionInfo().getPagingState()).isNull();
+        });
     }
 
     private static <T> T waitFor(Supplier<Optional<T>> supplier) throws InterruptedException
