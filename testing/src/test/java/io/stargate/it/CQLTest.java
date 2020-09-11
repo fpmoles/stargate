@@ -383,9 +383,9 @@ public class CQLTest extends BaseOsgiIntegrationTest
         final int pageSize = 10;
         String selectQuery = String.format("SELECT * FROM %s WHERE key1 = ?", tableName);
         PreparedStatement selectPs = session.prepare(selectQuery);
-        Arrays.stream(new Boolean[] {true, false}).forEach(prepare -> {
-            Statement<?> stmt = prepare ? selectPs.bind(0) : SimpleStatement.newInstance(selectQuery, 0);
-
+//        Arrays.stream(new Boolean[] {true, false}).forEach(prepare -> {
+//            Statement<?> stmt = prepare ? selectPs.bind(0) : SimpleStatement.newInstance(selectQuery, 0);
+            Statement<?> stmt = selectPs.bind(0);
             // Retrieve first page
             ResultSet rs = session.execute(stmt.setPageSize(pageSize));
             assertThat(rs.getAvailableWithoutFetching()).isEqualTo(pageSize);
@@ -396,7 +396,7 @@ public class CQLTest extends BaseOsgiIntegrationTest
             rs = session.execute(selectPs.bind(0).setPageSize(pageSize).setPagingState(pageState));
             assertThat(rs.getAvailableWithoutFetching()).isEqualTo(length - pageSize);
             assertThat(rs.getExecutionInfo().getPagingState()).isNull();
-        });
+//        });
     }
 
     private static <T> T waitFor(Supplier<Optional<T>> supplier) throws InterruptedException
