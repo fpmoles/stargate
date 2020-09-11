@@ -9,15 +9,15 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
 
+import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TestName;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.datastax.oss.driver.api.core.CqlIdentifier;
 import com.datastax.oss.driver.api.core.CqlSession;
@@ -40,42 +40,50 @@ import com.datastax.oss.driver.internal.core.loadbalancing.DcInferringLoadBalanc
 import net.jcip.annotations.NotThreadSafe;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
 
 @RunWith(Parameterized.class)
 @NotThreadSafe
 public class CQLTest extends BaseOsgiIntegrationTest
 {
-    private static final Logger logger = LoggerFactory.getLogger(PersistenceTest.class);
-
     @Rule
     public TestName name = new TestName();
 
     private String table;
     private String keyspace;
-    private CqlSession session;
+    private static CqlSession session;
 
     @Before
     public void setup()
     {
-        DriverConfigLoader loader =
-                DriverConfigLoader.programmaticBuilder()
-                        .withBoolean(DefaultDriverOption.METADATA_TOKEN_MAP_ENABLED, false)
-                        .withString(DefaultDriverOption.LOAD_BALANCING_POLICY_CLASS, DcInferringLoadBalancingPolicy.class.getName())
-                        .withDuration(DefaultDriverOption.REQUEST_TIMEOUT, Duration.ofSeconds(5))
-                        .withDuration(DefaultDriverOption.CONNECTION_INIT_QUERY_TIMEOUT, Duration.ofSeconds(5))
-                        .withDuration(DefaultDriverOption.CONTROL_CONNECTION_TIMEOUT, Duration.ofSeconds(5))
-                        .withDuration(DefaultDriverOption.REQUEST_TRACE_INTERVAL, Duration.ofSeconds(1))
-                        .build();
-
-        session = CqlSession.builder()
-                .withConfigLoader(loader)
-                .addContactPoint(new InetSocketAddress(stargateHost, 9043)).build();
-
         String testName = name.getMethodName();
         testName = testName.substring(0, testName.indexOf("["));
         keyspace = "ks_" + testName;
         table = testName;
+    }
 
+    @BeforeClass
+    public static void beforeAll()
+    {
+        DriverConfigLoader loader =
+            DriverConfigLoader.programmaticBuilder()
+                .withBoolean(DefaultDriverOption.METADATA_TOKEN_MAP_ENABLED, false)
+                .withString(DefaultDriverOption.LOAD_BALANCING_POLICY_CLASS, DcInferringLoadBalancingPolicy.class.getName())
+                .withDuration(DefaultDriverOption.REQUEST_TIMEOUT, Duration.ofSeconds(5))
+                .withDuration(DefaultDriverOption.CONNECTION_INIT_QUERY_TIMEOUT, Duration.ofSeconds(5))
+                .withDuration(DefaultDriverOption.CONTROL_CONNECTION_TIMEOUT, Duration.ofSeconds(5))
+                .withDuration(DefaultDriverOption.REQUEST_TRACE_INTERVAL, Duration.ofSeconds(1))
+                .build();
+
+        session = CqlSession.builder()
+            .withConfigLoader(loader)
+            .addContactPoint(new InetSocketAddress(stargateHost, 9043)).build();
+    }
+
+    @AfterClass
+    public static void afterAll()
+    {
+        session.close();
     }
 
     private void createKeyspace()
@@ -181,7 +189,7 @@ public class CQLTest extends BaseOsgiIntegrationTest
 
         session.execute(batch);
 
-        ResultSet rs = session.execute(String.format(selectFromQuery(false)));
+        ResultSet rs = session.execute(selectFromQuery(false));
 
         List<Row> rows = rs.all();
         assertThat(rows).hasSize(2);
@@ -361,7 +369,7 @@ public class CQLTest extends BaseOsgiIntegrationTest
             Thread.sleep(100);
         }
 
-        assertThat(false).isTrue();
+        fail("Time elapsed waiting for test condition");
         return null;
     }
 
